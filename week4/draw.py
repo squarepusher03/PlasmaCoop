@@ -4,7 +4,27 @@ from matplotlib.ticker import FuncFormatter
 import numpy as np
 
 THRESHOLD = 1e4
+EPS = np.finfo(float).tiny
 
+
+def symlog(y, linthresh=1e-3, base=10.0):
+    """Simple symmetric log transform.
+    Linear for |y| <= linthresh (scaled to [-1,1] region),
+    and logarithmic outside with continuity at the boundary.
+    """
+    y = np.asarray(y, dtype=float)
+    sign = np.sign(y)
+    ay = np.abs(y)
+    out = np.empty_like(ay)
+    mask = ay <= linthresh
+    # Linear region scaled so that y=±linthresh maps to ±1
+    out[mask] = ay[mask] / linthresh
+    # Log region offset by 1 to meet the linear region continuously
+    out[~mask] = 1.0 + np.log(ay[~mask] / linthresh) / np.log(base)
+    return sign * out
+
+title = 'THA FGS vs PSIF'
+name = r'$\forall \Delta B_z, dB_z = 6$ seconds (nT) vs $B_z$ (nT) vs $\bar{F_i}$ (kEv)'
 
 def yformat(val, pos):
     if val >= THRESHOLD:
@@ -21,44 +41,46 @@ def yformat(val, pos):
 
 def bushit(dfx, dfy, logscl=False, logcol=False, fill=False, zoom=None):
     fig, ax = plt.subplots(figsize=(8, 5))
-    fig.suptitle('THA FGS GSM')
+    fig.suptitle(title)
 
-    ax.set_title('Differences in Bz readings where dBz = 6 seconds (nT) vs Bz (nT)')
-    ax.set_xlabel('Bz (nT)')
+    ax.set_title(r'$\Delta B_z \implies dB_z = 6$ seconds (nT) vs $B_z$ (nT) vs $\bar{F_i}$ (kEv)')
+    ax.set_xlabel(r'$B_z$ (nT)')
     ax.set_ylabel(r'$\Delta B_z$ $(^{\text{nT}}\!\!/_{6\text{ sec}})$')
 
-    cm = 1 if not (fill or logcol) else 0
+    cm = 1
 
+    # Apply simple symlog transform to y-values when logscl=True
     if logscl:
-        if dfy.min() < 0:
-            ax.set_yscale('symlog', linthreshy=1e-3)
-        else:
-            ax.set_yscale('log')
+        y_plot = symlog(dfy)
     else:
-        ax.set_yscale('linear')
+        y_plot = dfy
+    ax.set_yscale('linear')
 
+    hrange = None
     if zoom:
-        if logcol:
-            h, xedges, yedges, im = ax.hist2d(dfx, dfy, cmin=cm, range=zoom, norm=LogNorm(),
-                                              bins=200)
+        if logscl:
+            y0, y1 = zoom[1]
+            y0t, y1t = symlog(np.array([y0, y1]))
+            hrange = (zoom[0], (float(min(y0t, y1t)), float(max(y0t, y1t))))
         else:
-            h, xedges, yedges, im = ax.hist2d(dfx, dfy, cmin=cm, range=zoom, bins=200)
+            hrange = zoom
+
+    if logcol:
+        h, xedges, yedges, im = ax.hist2d(dfx, y_plot, cmin=cm, range=hrange, norm=LogNorm(), bins=200)
     else:
-        if logcol:
-            h, xedges, yedges, im = ax.hist2d(dfx, dfy, cmin=cm, norm=LogNorm(), bins=200)
-        else:
-            h, xedges, yedges, im = ax.hist2d(dfx, dfy, cmin=cm, bins=200)
+        h, xedges, yedges, im = ax.hist2d(dfx, y_plot, cmin=cm, range=hrange, bins=200)
 
     cbar = fig.colorbar(im, ax=ax)
     colscale = 'log' if logcol else 'linear'
     cbar.set_label(f'Counts ({colscale} scale)')
 
     if fill:
-        h_filled = h.copy()
-        h_filled[h_filled == 0] = 1
-        im.set_array(h_filled.T.ravel())  # transpose to match orientation
-        im.set_clim(1, h_filled.max())
-        cbar.update_normal(im)
+        # Do not alter the image data or color limits; just paint the background
+        # with the lowest color so empty bins show as the minimum without
+        # affecting colors of non-empty bins.
+        vmin0, vmax0 = im.get_clim()
+        low_color = im.get_cmap()(im.norm(vmin0))
+        ax.set_facecolor(low_color)
 
     # ax.set_yticks(range(-100, 101, 25)) #changed after running
 
@@ -83,46 +105,44 @@ def bushit(dfx, dfy, logscl=False, logcol=False, fill=False, zoom=None):
     fig.savefig(fname)
     plt.close(fig)
 
-def bushita(dfx, dfy, dfz, logscl=False, logcol=False, fill=False, zoom=None):
+def bushita(dfx, dfy, dfz, logscl=None, logcol=False, fill=False, zoom=None, clabel=None):
     fig, ax = plt.subplots(figsize=(8, 5))
-    fig.suptitle('THA FGS GSM')
+    fig.suptitle(title)
 
-    ax.set_title('Differences in Bz readings where dBz = 6 seconds (nT) vs Bz (nT)')
-    ax.set_xlabel('Bz (nT)')
+    ax.set_title(name)
+    ax.set_xlabel(r'$B_z$ (nT)')
     ax.set_ylabel(r'$\Delta B_z$ $(^{\text{nT}}\!\!/_{6\text{ sec}})$')
 
-    cm = 1 if not (fill or logcol) else 0
-
-    if zoom:
-        if logcol:
-            h, xedges, yedges, im = ax.hexbin(dfx, dfy, C=dfz, reduce_C_function=np.mean,
-                                              cmin=cm, range=zoom, norm=LogNorm(), bins=200)
-        else:
-            h, xedges, yedges, im = ax.hexbin(dfx, dfy, C=dfz, reduce_C_function=np.mean,
-                                              cmin=cm, range=zoom, bins=200)
-    else:
-        if logcol:
-            h, xedges, yedges, im = ax.hexbin(dfx, dfy, C=dfz, reduce_C_function=np.mean,
-                                              cmin=cm, norm=LogNorm(), bins=200)
-        else:
-            h, xedges, yedges, im = ax.hexbin(dfx, dfy, C=dfz, reduce_C_function=np.mean,
-                                              cmin=cm, bins=200)
-
-    cbar = fig.colorbar(im, ax=ax)
-    colscale = 'log' if logcol else 'linear'
-    cbar.set_label(f'Counts ({colscale} scale)')
-
-    if fill:
-        h_filled = h.copy()
-        h_filled[h_filled == 0] = 1
-        im.set_array(h_filled.T.ravel())  # transpose to match orientation
-        im.set_clim(1, h_filled.max())
-        cbar.update_normal(im)
+    clabel = 'C' if not clabel else clabel
+    bins = 200
 
     if logscl:
-        ax.set_yscale('log')
+        y_plot = symlog(dfy, linthresh=1e-4)
     else:
-        ax.set_yscale('linear')
+        y_plot = dfy
+    ax.set_yscale('linear')
+
+    # Always use original hexbin so existing bin colors remain identical.
+    norm = LogNorm() if logcol else None
+    _s_mean = lambda a: np.nan if len(a) == 0 else np.nanmean(a)
+    if zoom:
+        if logscl:
+            y0, y1 = zoom[1]
+            y0t, y1t = symlog(np.array([y0, y1]))
+            extent = (zoom[0][0], zoom[0][1], float(min(y0t, y1t)), float(max(y0t, y1t)))
+        else:
+            extent = (zoom[0][0], zoom[0][1], zoom[1][0], zoom[1][1])
+        hb = ax.hexbin(dfx, y_plot, C=dfz, reduce_C_function=_s_mean, extent=extent, bins=bins, norm=norm)
+    else:
+        hb = ax.hexbin(dfx, y_plot, C=dfz, reduce_C_function=_s_mean, bins=bins, norm=norm)
+    cbar = fig.colorbar(hb, ax=ax)
+    colscale = 'log' if logcol else 'linear'
+    cbar.set_label(f'Mean {clabel} flux ({colscale} scale)')
+    if fill:
+        # Paint the background with the lowest color from the current normalization
+        vmin0, vmax0 = hb.get_clim()
+        low_color = hb.get_cmap()(hb.norm(vmin0))
+        ax.set_facecolor(low_color)
 
     # ax.set_yticks(range(-100, 101, 25)) #changed after running
 
@@ -131,7 +151,7 @@ def bushita(dfx, dfy, dfz, logscl=False, logcol=False, fill=False, zoom=None):
     # Draw grey gridlines on major ticks for better readability
     ax.grid(True, which='major', color='grey', linestyle='-', linewidth=0.5, alpha=0.5)
 
-    fname = ''
+    fname = '3v'
 
     fname += 'So' if logscl else 'Si'
     fname += 'Co' if logcol else 'Ci'
@@ -146,3 +166,14 @@ def bushita(dfx, dfy, dfz, logscl=False, logcol=False, fill=False, zoom=None):
     fig.tight_layout()
     fig.savefig(fname)
     plt.close(fig)
+
+def draw_profile3v(dfx, dfy, dfz=None, label='C', zoom=None):
+    bushita(dfx=dfx, dfy=dfy, dfz=dfz, clabel=label, zoom=zoom)
+    bushita(dfx=dfx, dfy=dfy, dfz=dfz, fill=True, clabel=label, zoom=zoom)
+    bushita(dfx=dfx, dfy=dfy, dfz=dfz, logscl=True, clabel=label, zoom=zoom)
+    bushita(dfx=dfx, dfy=dfy, dfz=dfz, logscl=True, fill=True, clabel=label, zoom=zoom)
+
+    bushita(dfx=dfx, dfy=dfy, dfz=dfz, logcol=True, clabel=label, zoom=zoom)
+    bushita(dfx=dfx, dfy=dfy, dfz=dfz, logcol=True, fill=True, clabel=label, zoom=zoom)
+    bushita(dfx=dfx, dfy=dfy, dfz=dfz, logcol=True, logscl=True, clabel=label, zoom=zoom)
+    bushita(dfx=dfx, dfy=dfy, dfz=dfz, logcol=True, logscl=True, fill=True, clabel=label, zoom=zoom)
