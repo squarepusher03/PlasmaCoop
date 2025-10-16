@@ -6,6 +6,8 @@ import numpy as np
 THRESHOLD = 1e4
 EPS = np.finfo(float).tiny
 
+title = ""
+name = ""
 
 def symlog(y, linthresh=1e-3, base=10.0):
     """Simple symmetric log transform.
@@ -22,9 +24,6 @@ def symlog(y, linthresh=1e-3, base=10.0):
     # Log region offset by 1 to meet the linear region continuously
     out[~mask] = 1.0 + np.log(ay[~mask] / linthresh) / np.log(base)
     return sign * out
-
-title = 'THA FGS vs PSIF'
-name = r'$\forall \Delta B_z, dB_z = 6$ seconds (nT) vs $B_z$ (nT) vs $\bar{F_i}$ (kEv)'
 
 def yformat(val, pos):
     if val >= THRESHOLD:
@@ -43,7 +42,7 @@ def bushit(dfx, dfy, logscl=False, logcol=False, fill=False, zoom=None):
     fig, ax = plt.subplots(figsize=(8, 5))
     fig.suptitle(title)
 
-    ax.set_title(r'$\Delta B_z \implies dB_z = 6$ seconds (nT) vs $B_z$ (nT) vs $\bar{F_i}$ (kEv)')
+    ax.set_title(r'$\Delta B_z \implies dB_z = 6$ seconds (nT) vs $B_z$ (nT) vs $\bar{F_e}$ (kEv)')
     ax.set_xlabel(r'$B_z$ (nT)')
     ax.set_ylabel(r'$\Delta B_z$ $(^{\text{nT}}\!\!/_{6\text{ sec}})$')
 
@@ -151,7 +150,7 @@ def bushita(dfx, dfy, dfz, logscl=None, logcol=False, fill=False, zoom=None, cla
     # Draw grey gridlines on major ticks for better readability
     ax.grid(True, which='major', color='grey', linestyle='-', linewidth=0.5, alpha=0.5)
 
-    fname = '3v'
+    fname = clabel.split()[0] + '3v'
 
     fname += 'So' if logscl else 'Si'
     fname += 'Co' if logcol else 'Ci'

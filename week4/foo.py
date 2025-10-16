@@ -74,27 +74,39 @@ if __name__ == '__main__':
     import draw
     from spacepy import pycdf
 
-    fgm_files = sorted(glob.glob('../themis_data/tha/l2/fgm/2014/*'))
-    state_files = sorted(glob.glob('../themis_data/tha/l1/state/2014/*'))
-    sst_files = sorted(glob.glob('../themis_data/tha/l2/sst/2014/*'))
+    process_data = False
 
-    file_pairs = list(zip(state_files, fgm_files, sst_files))
+    if process_data:
+        fgm_files = sorted(glob.glob('../themis_data/tha/l2/fgm/2014/*'))
+        state_files = sorted(glob.glob('../themis_data/tha/l1/state/2014/*'))
+        sst_files = sorted(glob.glob('../themis_data/tha/l2/sst/2014/*'))
 
-    max_workers = max(1, (os.cpu_count() or 1) - 2)
+        file_pairs = list(zip(state_files, fgm_files, sst_files))
 
-    with ProcessPoolExecutor(max_workers=max_workers) as ex:
-        rows = list(ex.map(read_data, file_pairs))
+        max_workers = max(1, (os.cpu_count() or 1) - 2)
 
-    df = pd.concat(rows, ignore_index=True)
+        with ProcessPoolExecutor(max_workers=max_workers) as ex:
+            rows = list(ex.map(read_data, file_pairs))
 
-    df = df.sort_values('time').reset_index(drop=True)
+        df = pd.concat(rows, ignore_index=True)
 
-    df['dBz6s'] = df['Bz'].shift(-1) - df['Bz'].shift(1)
+        df = df.sort_values('time').reset_index(drop=True)
+
+        df['dBz6s'] = df['Bz'].shift(-1) - df['Bz'].shift(1)
+
+        df.to_pickle('processed.pkl')
+    else:
+        df = pd.read_pickle('processed.pkl')
 
     x = df['Bz'][1:-1]
     y = df['dBz6s'][1:-1]
     z1 = df['Fi'][1:-1]
     z2 = df['Fe'][1:-1]
-    draw.draw_profile3v(x, y, z1, 'ion fluxes')
-    draw.draw_profile3v(x, y, z1, 'ion fluxes', zoom=((60, 120), (-5, 5)))
-    #draw.draw_profile3v(x, y, z2, 'electron')
+
+    draw.title = "THA FGS vs PSEF"
+    draw.name = r'$\forall \Delta B_z, dB_z = 6$ seconds (nT) vs $B_z$ (nT) vs $\bar{F_i}$ (kEv)'
+
+    #draw.draw_profile3v(x, y, z1, 'ion fluxes')
+    #draw.draw_profile3v(x, y, z1, 'ion fluxes', zoom=((60, 120), (-5, 5)))
+    draw.draw_profile3v(x, y, z2, 'electron fluxes', zoom=((20, 120), (-10, 10)))
+
