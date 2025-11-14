@@ -1,0 +1,13 @@
+as of meeting on 11/14/25,
+
+1. Remove all white noise (apparently not just random but of uniform amplitude), or LPF past 2k Hz
+2. Find out how to use a MatPlotLib slider to adjust time domain of visible FFT.
+    * What I mean to say is that there will be several power spectra, and the user will select which one they want to see.
+    * They can index through via a slider.
+    * The slider will increment the time the FFT is calculated on by 0.25 seconds.
+    * The FFT itself will be calculated on the 0.5 seconds prior to the indexed time stamp, and 0.5 seconds after.
+        - This means that the FFT will be calculated with the time domain of the FFTs starting on 0.5 seconds in,
+          to n - 0.5 seconds with n being last value in the time domain.
+        - This also means that there will be an FFT calculated every 0.25 seconds over the clipped time domain.
+    * Also remember that we'll only target those groups of frequencies individually for now. *OPTIONALLY*
+        - We could possibly do this iteratively on gaps of 0's in the time domain but we'll see.
