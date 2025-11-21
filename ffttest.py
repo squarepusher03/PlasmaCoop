@@ -1,3 +1,4 @@
+import glob
 from datetime import datetime, timedelta
 
 import os
@@ -69,86 +70,103 @@ def load_pickle_safe(pickle_path, cdf_path):
 		print("Please install spacepy or delete the .cache directory and regenerate pickle files.")
 		raise
 	
-sfn = 'mms_data/mms1/edp/brst/l2/dce/2020/09/02/mms1_edp_brst_l2_dce_20200902062933_v3.0.1.cdf'
+sfn = 'mms_data/mms1/edp/brst/l2/dce/2020/09/02/mms1_edp_brst_l2_dce_20200902062933_v3.0.1.cdf' # edp source
+pkl_path_e = '.cache/edp/dce/20200902062933.pkl'
+
+sfc = 'mms_data/mms1/scm/brst/l2/schb/2020/09/02/mms1_scm_brst_l2_schb_20200902062933_v3.0.1.cdf' # scm source
+pkl_path = '.cache/scm/schb/20200902062933.pkl'
 if __name__ == "__main__":
 	rcParams['path.simplify'] = True
 	rcParams['path.simplify_threshold'] = 0.2
 	mpl.use('Qt5Agg')
 	
-	pkl_path = '.cache/edp/dce/20200902062933.pkl'
-	df = load_pickle_safe(pkl_path, sfn)
+	# all scm caches for graphing all files
+	#sfc = glob.glob('mms_data/mms1/scm/brst/l2/schb/2020/09/02/*')
+	#pkl_paths = glob.glob('.cache/scm/schb/*')
+
+	df = load_pickle_safe(pkl_path_e, sfn)
 	df = df.dropna().reset_index(drop=True)
 
 	start = datetime(2020, 9, 2, 6, 30, 54)
 	end = datetime(2020, 9, 2, 6, 31, 6)
 	
 	# Create two axes: top for Ez vs time, bottom for FFT/PSD
-	fig, axes = plt.subplots(
-		6, 1, figsize=(10, 10), sharex=False, constrained_layout=True
+	fig, ax = plt.subplots(
+		1, 1, figsize=(8, 6), sharex=False, constrained_layout=True
 	)
 	
-	for i, ax in enumerate(axes):
-		fft_start = datetime(2020, 9, 2, 6, 30, 56) + i * timedelta(seconds=0.05)
-		fft_end = fft_start + pd.Timedelta(seconds=1)
-		print(f'start: {(fft_start - start).total_seconds()}, end: {(fft_end - start).total_seconds()}')
-		#print(f'centered @ {(fft_start - start).total_seconds() + 0.5}s')
-		# time_s = (td - start).dt.total_seconds()
-		df = df[(df['time'] > fft_start) & (df['time'] < fft_end)]
+	sig_key = 'Ez'
+	
+	st = datetime(2020, 9, 2, 6, 30, 56)
+	ts = st + timedelta(seconds=1.25)
+	times = [np.arange((st - start).total_seconds(), (ts - start).total_seconds(), 0.05)]
+	
+	fdf = pd.DataFrame(columns=['time', 'frequency', 'power'])
+
+	for i in np.arange(0, 0.75, 0.05):
+		center = st + timedelta(seconds=(float(i)))
+		fft_start = center - timedelta(seconds=(float(0.5)))
+		fft_end = center + timedelta(seconds=(float(0.5)))
 		
-		Ez = df['Ez']
-		Ez = Ez - Ez.mean()
-		time = df['time'] - start
+		tdf = df[(df['time'] >= fft_start) & (df['time'] <= fft_end)].reset_index(drop=True)
+		signal = tdf[sig_key]
+		signal = signal - signal.mean()
 		
-		# Length and window
-		n = len(Ez)
-		# Apply a Hann window (FFT-oriented, periodic form) to reduce spectral leakage
-		# Use SciPy's hann(..., sym=False) to match periodogram's default
+		n = len(signal)
 		w = hann(n, sym=False)
-		Ez_win = Ez * w
+		signal_win = signal * w
 		
 		# FFT and frequency axis (one-sided)
-		Ez_fft = fft.rfft(Ez_win)
-		Ez_fft_freq = np.fft.rfftfreq(n, d=1 / SCHB_FS)  # Hz
+		signal_fft = fft.rfft(signal_win)
+		signal_fft_freq = np.fft.rfftfreq(n, d=1 / SCHB_FS)  # Hz
 		
 		# Hann window power normalization for PSD (units: nT^2/Hz)
 		U = np.sum(w ** 2)  # window power of Hann
-		Ez_psd = (np.abs(Ez_fft) ** 2) / (SCHB_FS * U)
+		signal_psd = (np.abs(signal_fft) ** 2) / (SCHB_FS * U)
 		
 		# One-sided correction (conserve variance)
 		if n % 2 == 0:
 			# even n: DC at 0, Nyquist present at last index
-			if Ez_psd.size > 2:
-				Ez_psd[1:-1] *= 2
+			if signal_psd.size > 2:
+				signal_psd[1:-1] *= 2
 		else:
 			# odd n: no Nyquist bin
-			if Ez_psd.size > 1:
-				Ez_psd[1:] *= 2
+			if signal_psd.size > 1:
+				signal_psd[1:] *= 2
 		
 		# Frequency mask — keep only (0, 2000] Hz and apply to BOTH arrays
-		#mask = (Ez_fft_freq > 0) & (Ez_fft_freq <= 2000)
-		#f_sel = Ez_fft_freq[mask]
-		#P_sel = Ez_psd[mask]
+		mask = (signal_fft_freq > 0) & (signal_fft_freq <= 2000)
+		f_sel = signal_fft_freq[mask]
+		P_sel = signal_psd[mask]
+		fdf = pd.concat([fdf, pd.DataFrame({
+			'time': [(center - start).total_seconds()] * len(f_sel),
+			'frequency': f_sel,
+			'power': P_sel})], ignore_index=True)
+
+	# Bottom: PSD (FFT) plot
+	time_bins = np.arange(fdf['time'].min(), fdf['time'].max() + 0.06, 0.05)
+	freq_bins = np.linspace(0, 2000, 40)
+	ax.xaxis.set_major_locator(mpl.ticker.MultipleLocator(0.05, 2))
 	
-		ticks = [10 * 10 ** (-x) for x in range(10, 0, -3)]
-		# Bottom: PSD (FFT) plot
-		ax.plot(Ez_fft_freq, Ez_psd)
-		ax.set_yscale('log')
-		ax.set_yticks(ticks)
-		ax.set_xlim(0, 2000)
-		ax.grid(True)
-		
-		labels = [item.get_text() for item in ax.get_yticklabels()]
-		labels[-1] = 1
-		ax.set_yticklabels(labels)
+	ax.hist2d(fdf['time'], fdf['frequency'], weights=fdf['power'], bins=[time_bins, freq_bins],
+	          cmap='viridis', norm=mpl.colors.LogNorm())
+	ax.set_ylim(0, 2000)
 	
-	axes[0].set_ylabel(r'Power $\frac{(\text{mV})^2}{\text{m}^2 \cdot \text{Hz}}$')
-	axes[0].set_title(r'$E_z$ Power Spectrum')
-	axes[-1].set_xlabel('Frequency (Hz)')
-	
-	# Layout: add extra bottom margin so there's vertical space for the slider
+	ax.set_ylabel(r'Frequency (Hz)')
+	ax.set_title(r'$E_z$ Frequency vs. Time vs. $E_z$ Power $\frac{\text{mV}^2}{\text{mV}^2 \cdot \text{Hz}}$')
+	ax.set_xlabel('Time (s)')
 	
 	plt.tight_layout()
 	plt.show()
+	
+#	sn = f'@ {((fft_start - start) + timedelta(seconds=0.5)).total_seconds()}s'
+#	with pd.ExcelWriter('power_bfield.xlsx', mode='w') as writer:
+#		pdf.to_excel(writer, sheet_name=sn, index=False)
+
+#	with pd.ExcelWriter('power_bfield.xlsx', engine='openpyxl', mode='a',
+#						if_sheet_exists='replace') as writer:
+#		pdf.to_excel(writer, sheet_name=sn, index=False)
+
 
 #	sl_start = (td - (start + timedelta(seconds=0.5))).abs().argmin()
 #	sl_end = (td - (end - timedelta(seconds=0.5))).abs().argmin()
