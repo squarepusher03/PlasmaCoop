@@ -1,8 +1,8 @@
 #!.venv/bin/python3
 
-from pyspedas import themis
+from pyspedas import mms, download
 
-rnge = ['2014-07-01', '2014-12-31']
+rnge = ['2020-09-02/06:30', '2020-09-02/07:00']
 
-for p in ['a']:
-    themis.mom(trange=rnge, probe=p, downloadonly=True)
+mms.scm(trange=rnge, time_clip=True, datatype='schb', data_rate='brst', latest_version=True, no_update=False)
+mms.edp(trange=rnge, time_clip=True, datatype='dce', data_rate='brst', latest_version=True, no_update=False)
