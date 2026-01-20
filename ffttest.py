@@ -9,7 +9,8 @@ import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from math import log
-from matplotlib.ticker import FuncFormatter, NullFormatter, NullLocator, MultipleLocator, LogLocator, FixedLocator
+from matplotlib.ticker import FuncFormatter, NullFormatter, NullLocator, MultipleLocator, LogLocator, FixedLocator, \
+	FormatStrFormatter
 from scipy.signal.windows import hann
 from scipy.stats import binned_statistic_2d
 
@@ -24,7 +25,7 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 	ts = args[0][2]
 	inst = args[0][3].lower()
 	pad = args[0][0]
-
+	
 	pickle_path = f'./.cache/mms/1/scm/scb/{st.year}{st.month:02d}{st.day:02d}{st.hour:02d}{st.minute:02d}{st.second:02d}.pkl'
 
 	df = load_pickle_safe(pickle_path, cdf_path, key, regen_cdf)
@@ -41,11 +42,13 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 			fs = SCB_FS
 
 	fdf = pd.DataFrame(columns=['time', 'frequency', 'power'])
+	
+	df['time'] = (df['time'] - st).dt.total_seconds()
 
 	for i in np.arange(0, (ts - st).total_seconds() + 0.01, 0.05):
 		center = st + timedelta(seconds=(float(i)))
-		fft_start = center - timedelta(seconds=(float(pad)))
-		fft_end = center + timedelta(seconds=(float(pad)))
+		fft_start = ((center - timedelta(seconds=(float(pad)))) - st).total_seconds()
+		fft_end = ((center + timedelta(seconds=(float(pad)))) - st).total_seconds()
 
 		tdf = df[(df['time'] >= fft_start) & (df['time'] <= fft_end)].reset_index(drop=True)
 		# signal = tdf[sig_key]
@@ -59,7 +62,7 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 		# FFT and frequency axis (one-sided)
 		signal_fft = fft.rfft(signal * w)
 		signal_fft_freq = np.fft.rfftfreq(n, d=1/SCB_FS)  # Hz
-		#signal_fft_freq = vr(signal_fft_freq / Df) * Df # TODO: fix leakage with subtracted series
+		signal_fft_freq = vr(signal_fft_freq / Df) * Df # TODO: fix leakage with subtracted series
 
 		# Hann window power normalization for PSD (units: nT^2/Hz) ONLY FOR POWER SPECTRA
 		signal_psd = (np.abs(signal_fft) ** 2) / (fs * u * n)
@@ -73,7 +76,8 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 			'time': [(center - st).total_seconds()] * len(f_sel),
 			'frequency': f_sel,
 			'power': P_sel})], ignore_index=True)
-
+	
+	pickle_path = f'./.cache/mms/1/scm/scb/fft/{pad:.2f}p{st.year}{st.month:02d}{st.day:02d}{st.hour:02d}{st.minute:02d}{st.second:02d}.pkl'
 	os.makedirs(os.path.dirname(pickle_path), exist_ok=True)
 	fdf.to_pickle(pickle_path)
 
@@ -85,7 +89,7 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 paper = 'mms_data/mms1/scm/brst/l2/schb/2019/08/16/mms1_scm_brst_l2_schb_20190816093103_v2.2.0.cdf'
 pkl_path_p = '.cache/mms/1/scm/schb/20190816093145.pkl'
 
-paperb = 'mms_data/mms1/scm/brst/l2/scb/2019/08/16/mms1_scm_brst_l2_scb_20190816093103_v2.2.1.cdf'
+paperb = 'pydata/mms1/scm/brst/l2/scb/2019/08/16/mms1_scm_brst_l2_scb_20190816093103_v2.2.1.cdf'
 pkl_path_b = '.cache/mms/1/scm/scb/20190816093145.pkl'
 
 pkl_path_pr = '.cache/mms/1/scm/fft/scb/20190816093145.pkl'
@@ -176,6 +180,7 @@ if __name__ == "__main__":
 	for j, i in enumerate([0.1, 0.25, 0.5]):
 		print(i*2)
 		ax = axes[j]
+		#pkl_path_real = f'./.cache/mms1/scm/scb/fft/{i:.2f}p{start.year}{start.month:02d}{start.day:02d}{start.hour:02d}{start.minute:02d}{start.second:02d}.pkl'
 		pkl_path_real = f'./.cache/mms1/scm/scb/{start.year}{start.month:02d}{start.day:02d}{start.hour:02d}{start.minute:02d}{start.second:02d}.pkl'
 		fdf = load_pickle_safe(pkl_path_real, cdf_path, sig_key, gen_fft, i, start, end, 'scb')
 		fdf.loc[fdf['frequency'] == 0, 'frequency'] = 1
@@ -202,10 +207,11 @@ if __name__ == "__main__":
 		print('plot')
 
 		# debug plot stuff
-		ax.yaxis.set_major_locator(MultipleLocator(1))
-		#ax.tick_params('x', rotation=90)
+		#ax.yaxis.set_major_locator(MultipleLocator(1))
+		ax.tick_params('x', rotation=90)
 
-		ax.xaxis.set_major_locator(MultipleLocator(0.5, 1))
+		ax.xaxis.set_major_locator(MultipleLocator(0.1, 1))
+		ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 		ax.yaxis.set_major_locator(FixedLocator(vfunc([10, 100, 1000])))
 		ax.set_yticklabels([r'$10^1$', r'$10^2$', r'$10^3$'])
 
