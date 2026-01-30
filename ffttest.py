@@ -1,17 +1,14 @@
-import glob
 from datetime import datetime, timedelta
 
 import os
 
 import numpy as np
-from scipy import fft
 import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from math import log
-from matplotlib.ticker import FuncFormatter, NullFormatter, NullLocator, MultipleLocator, LogLocator, FixedLocator, \
+from matplotlib.ticker import FuncFormatter, MultipleLocator, FixedLocator, \
 	FormatStrFormatter
-from scipy.signal.windows import hann
 from scipy.stats import binned_statistic_2d
 
 from caching import load_pickle_safe, regen_cdf
@@ -43,12 +40,12 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 
 	fdf = pd.DataFrame(columns=['time', 'frequency', 'power'])
 	
-	df['time'] = (df['time'] - st).dt.total_seconds()
+	f = df['time']
 
 	for i in np.arange(0, (ts - st).total_seconds() + 0.01, 0.05):
 		center = st + timedelta(seconds=(float(i)))
-		fft_start = ((center - timedelta(seconds=(float(pad)))) - st).total_seconds()
-		fft_end = ((center + timedelta(seconds=(float(pad)))) - st).total_seconds()
+		fft_start = (center - timedelta(seconds=(float(pad))))
+		fft_end = (center + timedelta(seconds=(float(pad))))
 
 		tdf = df[(df['time'] >= fft_start) & (df['time'] <= fft_end)].reset_index(drop=True)
 		# signal = tdf[sig_key]
@@ -56,13 +53,14 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 		signal = signal - np.mean(signal)
 
 		n = len(signal)
-		w = hann(n, sym=False)
+		w = np.hanning(n)
 		u = np.mean(w ** 2) # "mean square" of hann window, differs by window
 
 		# FFT and frequency axis (one-sided)
-		signal_fft = fft.rfft(signal * w)
+		signal_fft = np.fft.rfft(signal * w)
 		signal_fft_freq = np.fft.rfftfreq(n, d=1/SCB_FS)  # Hz
-		signal_fft_freq = vr(signal_fft_freq / Df) * Df # TODO: fix leakage with subtracted series
+		signal_fft_freq = vr(signal_fft_freq)
+		#signal_fft_freq = vr(signal_fft_freq / Df) * Df # TODO: fix leakage with subtracted series
 
 		# Hann window power normalization for PSD (units: nT^2/Hz) ONLY FOR POWER SPECTRA
 		signal_psd = (np.abs(signal_fft) ** 2) / (fs * u * n)
@@ -73,7 +71,7 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 		f_sel = signal_fft_freq[mask]
 		P_sel = signal_psd[mask]
 		fdf = pd.concat([fdf, pd.DataFrame({
-			'time': [(center - st).total_seconds()] * len(f_sel),
+			'time': [(center - st).total_seconds()] * len(f_sel), # converting to seconds since start
 			'frequency': f_sel,
 			'power': P_sel})], ignore_index=True)
 	
@@ -139,6 +137,7 @@ if __name__ == "__main__":
 
 		return b
 
+
 	def channelize(x):
 		global bins
 
@@ -149,11 +148,19 @@ if __name__ == "__main__":
 				if bins[i - 1] < x <= bins[i]:
 					return i
 
-		if x == lpf_lim + 1:
+		if x == bins[-1]:
 			return len(bins)
 
 		print(f'wtf: {x}')
 		return None
+
+
+#		 def display_logbin_legend(ax: plt.Axes):
+#	        lg_lbls = [f'Channel {i}: [{bins[i - 1]} - {bins[i]}) Hz' for i in range(channelize(10), len(bins) - 1)]
+#	        lg_lbls.append(f'Channel {len(bins) - 1}: [{bins[len(bins) - 2]} - {lpf_lim}] Hz')
+#	        proxies = [Patch(color='none') for _ in range(len(lg_lbls))]
+#	        ax.legend(proxies, lg_lbls, handlelength=0, handletextpad=0)
+
 
 	vfunc = np.vectorize(channelize)
 
@@ -163,7 +170,12 @@ if __name__ == "__main__":
 	if os.path.exists(name):
 		os.remove(name)
 
-	writer = pd.ExcelWriter(name, mode='w')
+	writer = pd.ExcelWriter(name, engine='xlsxwriter', mode='w')
+
+	book = writer.book
+
+	sci_notate = book.add_format()
+	sci_notate.set_num_format(11)
 
 	print('open excel')
 
@@ -187,7 +199,7 @@ if __name__ == "__main__":
 
 		print('load')
 
-		fq = fdf['frequency'].unique() # TODO: delete when done debugging
+#		fq = fdf['frequency'].unique() # TODO: delete when done debugging
 		bins = make_log_bins(fdf['frequency'].unique(), i * 2)
 		print('bins')
 		fdf['channel'] = vfunc(fdf['frequency'])
@@ -197,40 +209,39 @@ if __name__ == "__main__":
 		print('write excel')
 
 		# Bottom: PSD (FFT) plot
-		fdf['time'] += 1e-12
 
 #        print(str(2 * i))
 #        print(fdf[:10])
-
+		
+		fdf['time'] = fdf['time'].astype(float) + 1e-12
+		fdf['frequency'] = fdf['frequency'].astype(float)
+		fdf['power'] = fdf['power'].astype(float)
+		
 		stat, xe, ye, bn = binned_statistic_2d(fdf['time'], fdf['channel'], fdf['power'],
 											   statistic='mean', bins=[time_bins, fdf['channel'].unique()])
 		print('plot')
-
-		# debug plot stuff
-		#ax.yaxis.set_major_locator(MultipleLocator(1))
-		ax.tick_params('x', rotation=90)
-
-		ax.xaxis.set_major_locator(MultipleLocator(0.1, 1))
-		ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
-		ax.yaxis.set_major_locator(FixedLocator(vfunc([10, 100, 1000])))
-		ax.set_yticklabels([r'$10^1$', r'$10^2$', r'$10^3$'])
 
 		mappable = ax.pcolormesh(xe, ye, stat.T,
 								 norm=mpl.colors.LogNorm(vmin=1e-6, vmax=1e-2), cmap='jet')
 		cbar = plt.colorbar(mappable=mappable, ax=ax)
 		cbar.formatter = FuncFormatter(lambda x, pos: f'{int(np.log10(x))}')
+		
+		# debug plot stuff
+		#ax.yaxis.set_major_locator(MultipleLocator(1))
+		#ax.tick_params('x', rotation=90)
+		
+		ax.xaxis.set_major_locator(MultipleLocator(0.5, 1))
+		ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
 
-		ax.set_ylim(bottom=channelize(10), top=channelize(lpf_lim))
-		ba = ax.get_yticklabels()
-		ba[-1].set_text(r'$10^3$')
-		ba[-2].set_text('')
+		#ax.set_ylim(bottom=channelize(10), top=channelize(lpf_lim))
+		ax.set_ylim(bottom=channelize(10), top=fdf['channel'].unique()[-1])
+		ax.yaxis.set_major_locator(FixedLocator(vfunc([10, 100, 1000])))
+		#ax.yaxis.set_major_locator(FixedLocator(fdf['channel'].unique()))
+		#tl = bins
+		#ax.set_yticklabels(tl)
+		ax.set_yticklabels([r'$10^1$', r'$10^2$', r'$10^3$'])
 
-#        lg_lbls = [f'Channel {i}: [{bins[i - 1]} - {bins[i]}) Hz' for i in range(channelize(10), len(bins) - 1)]
-#        lg_lbls.append(f'Channel {len(bins) - 1}: [{bins[len(bins) - 2]} - {lpf_lim}] Hz')
-#        proxies = [Patch(color='none') for _ in range(len(lg_lbls))]
-#        ax.legend(proxies, lg_lbls, handlelength=0, handletextpad=0)
-
-		#ax.grid()
+		ax.grid(linewidth=0.25)
 		ax.set_title(rf'FFT taken with {i * 2} sec window / $\Delta f = {int((i * 2) ** -1)}$')
 		ax.set_ylabel('Frequency (Hz)')
 		ax.set_xlabel('Time (s)')
@@ -239,28 +250,12 @@ if __name__ == "__main__":
 	plt.show()
 	print('\nshow')
 
-	pngpth = './out/fft/scb.png'
+	for sheet in writer.sheets.values():
+		sheet.set_column('D:D', 10, sci_notate)
+
+	pngpth = './out/fft/'
 	os.makedirs(os.path.dirname(pngpth), exist_ok=True)
-	#plt.savefig(gen_path(ext='png'))
+	#plt.savefig(pngpth + 'scalefix.png')
+
 
 	writer.close()
-
-#    ytx = ax.get_yticks()
-#    ytl = [str(int(i)) for i in ytx[:-2]] + ['']
-# ax.set_yticklabels(ytl)
-
-#	fdf = tdf[fdf['time'] == 2.45].drop(columns='time')
-#	ax1.plot(fdf['frequency'], fdf['power'], color='red')
-
-#	fdf = load_pickle_safe(pkl_path_real, cache_path, sig_key, gen_fft, 0.25, start, end)
-#	fdf = tdf[tdf['time'] == 2.45].drop(columns='time')
-#	ax1.plot(fdf['frequency'], fdf['power'], color='blue')
-#
-#	ax1.set_xticks([10,] + list(range(100, 1001, 100)))
-#	ax1.set_xlim(left=10, right=1000)
-#	ax1.set_title(fr'$|{sig_key[0]}|$ Power Spectra at 09:31:58.45')
-#	ax1.set_xlabel('Frequency (Hz)')
-#	ax1.set_ylabel(rf'Power $\left({units}\right)$')
-#	ax1.set_yscale('log')
-#	ax1.legend(labels=['0.2 second window', '0.5 second window'])
-
