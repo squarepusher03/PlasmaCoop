@@ -60,7 +60,7 @@ def scipy_gen_fft(pickle_path, cdf_path, key, *args):
 		u = np.mean(w ** 2)  # "mean square" of hann window, differs by window
 		
 		# FFT and frequency axis (one-sided)
-		signal_fft = scipy.fft.rfft(signal * w, norm='ortho')
+		signal_fft = scipy.fft.rfft(signal * w)
 		signal_fft_freq = scipy.fft.rfftfreq(n, d=1 / SCB_FS)  # Hz
 		signal_fft_freq = vr(signal_fft_freq)
 		# signal_fft_freq = vr(signal_fft_freq / Df) * Df # TODO: fix leakage with subtracted series
@@ -127,7 +127,7 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 		u = np.mean(w ** 2) # "mean square" of hann window, differs by window
 
 		# FFT and frequency axis (one-sided)
-		signal_fft = np.fft.rfft(signal * w, norm="ortho")
+		signal_fft = np.fft.rfft(signal * w)
 		signal_fft_freq = np.fft.rfftfreq(n, d=1/SCB_FS)  # Hz
 		signal_fft_freq = vr(signal_fft_freq)
 		#signal_fft_freq = vr(signal_fft_freq / Df) * Df # TODO: fix leakage with subtracted series
@@ -260,7 +260,12 @@ if __name__ == "__main__":
 #	fig.suptitle(
 #		fr'$|{sig_key[0]}|$ Frequency vs. Time vs. $|{sig_key[0]}|$ Power ${units}$ starting from {start.hour:02d}:{start.minute:02d}:{start.second:02d}')
 
-	fig.suptitle(fr'Scipy method vs. Numpy method of Power ${units}$ @ {start.strftime(datefmt)}')
+	methods = False # ~~~~~~~~~~~~~~~~~~~~~~~~~~ TRUE IF PLOTTING SPECTRA OF BOTH, FALSE IF PLOTTING POWER OF BOTH TODO:
+
+	if methods:
+		fig.suptitle(fr'B-field Frequency vs. Power ${units}$ @ {start.strftime(datefmt)}')
+	else:
+		fig.suptitle(fr'Numpy method vs. Scipy method of Power ${units}$ @ {start.strftime(datefmt)}')
 
 	for j, i in enumerate([0.1, 0.25, 0.5]):
 		print(i*2)
@@ -298,17 +303,22 @@ if __name__ == "__main__":
 		
 		if start == end:
 			fdf = make_fft(start, end, gen_fft, i)
-			
 			sdf = make_fft(start, end, scipy_gen_fft, i)
-			ax.plot(sdf['power'], fdf['power'], color='blue')
 			
-			ax.tick_params(labelbottom=True)
-			ax.ticklabel_format(axis='both', style='sci', scilimits=(0, 0))
-#			ax.xaxis.set_major_locator(FixedLocator([10, 100, 300, 1000]))
-#			ax.set_xticklabels([r'$10^1$', r'$10^2$', r'$3 \cdot 10^2$', r'$10^3$'])
-#			ax.set_xlim(left=1, right=300)
-#			ax.set_yscale('log')
-	
+			if methods:
+				ax.plot(sdf['frequency'], sdf['power'], color='blue', label='Scipy method')
+				ax.plot(fdf['frequency'], fdf['power'], color='red', label='Numpy method')
+				
+				ax.xaxis.set_major_locator(FixedLocator([10, 100, 300, 1000]))
+				ax.set_xticklabels([r'$10^1$', r'$10^2$', r'$3 \cdot 10^2$', r'$10^3$'])
+				ax.set_xlim(left=1, right=300)
+				ax.set_yscale('log')
+			else:
+				ax.plot(sdf['power'], fdf['power'])
+				ax.tick_params(labelbottom=True)
+				ax.ticklabel_format(axis='both', style='sci', scilimits=(-3, -3))
+				ax.set_ylim(top=1.2 * 1e-3 + 1e-4)
+
 			ax.grid(linewidth=0.25)
 		
 			#ax.yaxis.set_major_locator(FixedLocator(fdf['channel'].unique()))
@@ -342,6 +352,12 @@ if __name__ == "__main__":
 
 		ax.set_title(rf'FFT taken with {i * 2} sec window / $\Delta f = {int((i * 2) ** -1)}$')
 		print('stylize\n')
+	
+	if methods:
+		plt.legend(loc='upper right')
+	else:
+		plt.xlabel('Scipy method Power')
+		plt.ylabel('Numpy method Power')
 
 	#plt.show()
 	print('\nshow')
@@ -351,7 +367,10 @@ if __name__ == "__main__":
 
 	pngpth = './out/fft/'
 	os.makedirs(os.path.dirname(pngpth), exist_ok=True)
-	plt.savefig(pngpth + 'nvss.pdf', format='pdf')
+	if methods:
+		plt.savefig(pngpth + 'methods.pdf', format='pdf')
+	else:
+		plt.savefig(pngpth + 'nvss.pdf', format='pdf')
 
 
 	writer.close()
