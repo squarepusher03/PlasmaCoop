@@ -7,6 +7,9 @@ import pandas as pd
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from math import log
+
+import scipy
+from scipy.signal import windows
 from matplotlib.ticker import FuncFormatter, MultipleLocator, FixedLocator, \
 	FormatStrFormatter
 from scipy.stats import binned_statistic_2d
@@ -15,6 +18,73 @@ from caching import load_pickle_safe, regen_cdf
 
 SCB_FS = 8_192
 SCHB_FS = 16_384
+
+
+def scipy_gen_fft(pickle_path, cdf_path, key, *args):
+	st = args[0][1]
+	ts = args[0][2]
+	inst = args[0][3].lower()
+	pad = args[0][0]
+	
+	pickle_path = f'./.cache/mms/1/scm/scb/{st.year}{st.month:02d}{st.day:02d}{st.hour:02d}{st.minute:02d}{st.second:02d}.pkl'
+	
+	df = load_pickle_safe(pickle_path, cdf_path, key, regen_cdf)
+	
+	vr = np.vectorize(lambda x: round(x))
+	Df = 1 / (pad * 2)
+	
+	match inst:
+		case 'schb':
+			fs = SCHB_FS
+		case 'scb':
+			fs = SCB_FS
+		case _:
+			fs = SCB_FS
+	
+	fdf = pd.DataFrame(columns=['time', 'frequency', 'power'])
+	
+	f = df['time']
+	
+	for i in np.arange(0, (ts - st).total_seconds() + 0.01, 0.05):
+		center = st + timedelta(seconds=(float(i)))
+		fft_start = (center - timedelta(seconds=(float(pad))))
+		fft_end = (center + timedelta(seconds=(float(pad))))
+		
+		tdf = df[(df['time'] >= fft_start) & (df['time'] <= fft_end)].reset_index(drop=True)
+		# signal = tdf[sig_key]
+		signal = np.sqrt(tdf[key[0] + 'z'] ** 2 + tdf[key[0] + 'y'] ** 2 + tdf[key[0] + 'x'] ** 2)
+		signal = signal - np.mean(signal)
+		
+		n = len(signal)
+		w = windows.hann(n)
+		u = np.mean(w ** 2)  # "mean square" of hann window, differs by window
+		
+		# FFT and frequency axis (one-sided)
+		signal_fft = scipy.fft.rfft(signal * w, norm='ortho')
+		signal_fft_freq = scipy.fft.rfftfreq(n, d=1 / SCB_FS)  # Hz
+		signal_fft_freq = vr(signal_fft_freq)
+		# signal_fft_freq = vr(signal_fft_freq / Df) * Df # TODO: fix leakage with subtracted series
+		
+		# Hann window power normalization for PSD (units: nT^2/Hz) ONLY FOR POWER SPECTRA
+		signal_psd = (np.abs(signal_fft) ** 2) / (fs * u * n)
+		signal_psd[1:] = signal_psd[1:] * 2
+		
+		mask = (signal_fft_freq >= 0) & (signal_fft_freq <= lpf_lim)
+		
+		f_sel = signal_fft_freq[mask]
+		P_sel = signal_psd[mask]
+		fdf = pd.concat([fdf, pd.DataFrame({
+			'time': [(center - st).total_seconds()] * len(f_sel),  # converting to seconds since start
+			'frequency': f_sel,
+			'power': P_sel})], ignore_index=True)
+	
+	pickle_path = f'./.cache/mms/1/scm/scb/fft/s{pad:.2f}p{st.year}{st.month:02d}{st.day:02d}{st.hour:02d}{st.minute:02d}{st.second:02d}.pkl'
+	os.makedirs(os.path.dirname(pickle_path), exist_ok=True)
+	fdf.to_pickle(pickle_path)
+	
+	print(f"Successfully generated pickle file: {pickle_path}")
+	
+	return fdf
 
 
 def gen_fft(pickle_path, cdf_path, key, *args):
@@ -57,7 +127,7 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 		u = np.mean(w ** 2) # "mean square" of hann window, differs by window
 
 		# FFT and frequency axis (one-sided)
-		signal_fft = np.fft.rfft(signal * w)
+		signal_fft = np.fft.rfft(signal * w, norm="ortho")
 		signal_fft_freq = np.fft.rfftfreq(n, d=1/SCB_FS)  # Hz
 		signal_fft_freq = vr(signal_fft_freq)
 		#signal_fft_freq = vr(signal_fft_freq / Df) * Df # TODO: fix leakage with subtracted series
@@ -111,9 +181,10 @@ if __name__ == "__main__":
 	sig_key = 'Bz'
 	units = r'\frac{\text{nT}^2}{\text{Hz}}' if sig_key[0] == 'B' else r'\frac{\text{mV}^2}{\text{m}^2 \cdot \text{Hz}}'
 
-	datefmt = '%m/%d/%Y-%H:%M:%S'
-	start = datetime.strptime('08/16/2019-09:31:56', datefmt)
-	end = datetime.strptime('08/16/2019-09:32:00', datefmt)
+	datefmt = '%m/%d/%Y-%H:%M:%S.%f'
+	#start = datetime.strptime('08/16/2019-09:31:56', datefmt)
+	start = datetime.strptime('08/16/2019-09:31:58.45', datefmt)
+	end = datetime.strptime('08/16/2019-09:31:58.45', datefmt)
 
 	# Create two axes: top for Ez vs time, bottom for FFT/PSD
 	fig, axes = plt.subplots(
@@ -186,24 +257,36 @@ if __name__ == "__main__":
 
 	time_bins = np.arange(0, (end - start).total_seconds() + 0.06, 0.05)
 
-	fig.suptitle(
-		fr'$|{sig_key[0]}|$ Frequency vs. Time vs. $|{sig_key[0]}|$ Power ${units}$ starting from {start.hour:02d}:{start.minute:02d}:{start.second:02d}')
+#	fig.suptitle(
+#		fr'$|{sig_key[0]}|$ Frequency vs. Time vs. $|{sig_key[0]}|$ Power ${units}$ starting from {start.hour:02d}:{start.minute:02d}:{start.second:02d}')
+
+	fig.suptitle(fr'Scipy method vs. Numpy method of Power ${units}$ @ {start.strftime(datefmt)}')
 
 	for j, i in enumerate([0.1, 0.25, 0.5]):
 		print(i*2)
 		ax = axes[j]
-		#pkl_path_real = f'./.cache/mms1/scm/scb/fft/{i:.2f}p{start.year}{start.month:02d}{start.day:02d}{start.hour:02d}{start.minute:02d}{start.second:02d}.pkl'
-		pkl_path_real = f'./.cache/mms1/scm/scb/{start.year}{start.month:02d}{start.day:02d}{start.hour:02d}{start.minute:02d}{start.second:02d}.pkl'
-		fdf = load_pickle_safe(pkl_path_real, cdf_path, sig_key, gen_fft, i, start, end, 'scb')
-		fdf.loc[fdf['frequency'] == 0, 'frequency'] = 1
+		def make_fft(start, end, method, i):
+			#pkl_path_real = f'./.cache/mms1/scm/scb/fft/{i:.2f}p{start.year}{start.month:02d}{start.day:02d}{start.hour:02d}{start.minute:02d}{start.second:02d}.pkl'
+			pkl_path_real = f'./.cache/mms1/scm/scb/{start.year}{start.month:02d}{start.day:02d}{start.hour:02d}{start.minute:02d}{start.second:02d}.pkl'
+			fdf = load_pickle_safe(pkl_path_real, cdf_path, sig_key, method, i, start, end, 'scb')
+			fdf.loc[fdf['frequency'] == 0, 'frequency'] = 1
 
-		print('load')
+			print('load')
 
-#		fq = fdf['frequency'].unique() # TODO: delete when done debugging
-		bins = make_log_bins(fdf['frequency'].unique(), i * 2)
-		print('bins')
-		fdf['channel'] = vfunc(fdf['frequency'])
-		print('channelize')
+	#		fq = fdf['frequency'].unique() # TODO: delete when done debugging
+			global bins
+			bins = make_log_bins(fdf['frequency'].unique(), i * 2)
+			print('bins')
+			fdf['channel'] = vfunc(fdf['frequency'])
+			print('channelize')
+			
+			fdf['time'] = fdf['time'].astype(float) + 1e-12
+			fdf['frequency'] = fdf['frequency'].astype(float)
+			fdf['power'] = fdf['power'].astype(float)
+			
+			return fdf
+
+		fdf = make_fft(start, end, gen_fft, i)
 
 		fdf.to_excel(writer, sheet_name=f'{i * 2} sec interval')
 		print('write excel')
@@ -213,41 +296,54 @@ if __name__ == "__main__":
 #        print(str(2 * i))
 #        print(fdf[:10])
 		
-		fdf['time'] = fdf['time'].astype(float) + 1e-12
-		fdf['frequency'] = fdf['frequency'].astype(float)
-		fdf['power'] = fdf['power'].astype(float)
+		if start == end:
+			fdf = make_fft(start, end, gen_fft, i)
+			
+			sdf = make_fft(start, end, scipy_gen_fft, i)
+			ax.plot(sdf['power'], fdf['power'], color='blue')
+			
+			ax.tick_params(labelbottom=True)
+			ax.ticklabel_format(axis='both', style='sci', scilimits=(0, 0))
+#			ax.xaxis.set_major_locator(FixedLocator([10, 100, 300, 1000]))
+#			ax.set_xticklabels([r'$10^1$', r'$10^2$', r'$3 \cdot 10^2$', r'$10^3$'])
+#			ax.set_xlim(left=1, right=300)
+#			ax.set_yscale('log')
+	
+			ax.grid(linewidth=0.25)
 		
-		stat, xe, ye, bn = binned_statistic_2d(fdf['time'], fdf['channel'], fdf['power'],
-											   statistic='mean', bins=[time_bins, fdf['channel'].unique()])
-		print('plot')
+			#ax.yaxis.set_major_locator(FixedLocator(fdf['channel'].unique()))
+			#tl = bins
+			#ax.set_yticklabels(tl)
+		else:
+			stat, xe, ye, bn = binned_statistic_2d(fdf['time'], fdf['channel'], fdf['power'],
+			                                       statistic='mean', bins=[time_bins, fdf['channel'].unique()])
+			mappable = ax.pcolormesh(xe, ye, stat.T,
+									 norm=mpl.colors.LogNorm(vmin=1e-6, vmax=1e-2), cmap='jet')
+			cbar = plt.colorbar(mappable=mappable, ax=ax)
+			cbar.formatter = FuncFormatter(lambda x, pos: f'{int(np.log10(x))}')
+			
+			print('plot')
 
-		mappable = ax.pcolormesh(xe, ye, stat.T,
-								 norm=mpl.colors.LogNorm(vmin=1e-6, vmax=1e-2), cmap='jet')
-		cbar = plt.colorbar(mappable=mappable, ax=ax)
-		cbar.formatter = FuncFormatter(lambda x, pos: f'{int(np.log10(x))}')
-		
-		# debug plot stuff
-		#ax.yaxis.set_major_locator(MultipleLocator(1))
-		#ax.tick_params('x', rotation=90)
-		
-		ax.xaxis.set_major_locator(MultipleLocator(0.5, 1))
-		ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+			# debug plot stuff
+			#ax.yaxis.set_major_locator(MultipleLocator(1))
+			#ax.tick_params('x', rotation=90)
+			
+			ax.xaxis.set_major_locator(MultipleLocator(0.5, 1))
+			ax.xaxis.set_major_formatter(FormatStrFormatter('%.2f'))
+			ax.set_xlabel('Time (s)')
+			ax.set_ylabel('Frequency (Hz)')
 
-		#ax.set_ylim(bottom=channelize(10), top=channelize(lpf_lim))
-		ax.set_ylim(bottom=channelize(10), top=fdf['channel'].unique()[-1])
-		ax.yaxis.set_major_locator(FixedLocator(vfunc([10, 100, 1000])))
-		#ax.yaxis.set_major_locator(FixedLocator(fdf['channel'].unique()))
-		#tl = bins
-		#ax.set_yticklabels(tl)
-		ax.set_yticklabels([r'$10^1$', r'$10^2$', r'$10^3$'])
+			#ax.set_ylim(bottom=channelize(10), top=channelize(lpf_lim))
+			ax.set_ylim(bottom=channelize(10), top=fdf['channel'].unique()[-1])
+			ax.yaxis.set_major_locator(FixedLocator(vfunc([10, 100, 1000])))
+			#ax.yaxis.set_major_locator(FixedLocator(fdf['channel'].unique()))
+			#tl = bins
+			#ax.set_yticklabels(tl)
 
-		ax.grid(linewidth=0.25)
 		ax.set_title(rf'FFT taken with {i * 2} sec window / $\Delta f = {int((i * 2) ** -1)}$')
-		ax.set_ylabel('Frequency (Hz)')
-		ax.set_xlabel('Time (s)')
 		print('stylize\n')
 
-	plt.show()
+	#plt.show()
 	print('\nshow')
 
 	for sheet in writer.sheets.values():
@@ -255,7 +351,7 @@ if __name__ == "__main__":
 
 	pngpth = './out/fft/'
 	os.makedirs(os.path.dirname(pngpth), exist_ok=True)
-	#plt.savefig(pngpth + 'scalefix.png')
+	plt.savefig(pngpth + 'nvss.pdf', format='pdf')
 
 
 	writer.close()
