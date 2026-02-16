@@ -31,8 +31,7 @@ def scipy_gen_fft(pickle_path, cdf_path, key, *args):
 	df = load_pickle_safe(pickle_path, cdf_path, key, regen_cdf)
 	
 	vr = np.vectorize(lambda x: round(x))
-	Df = 1 / (pad * 2)
-	
+
 	match inst:
 		case 'schb':
 			fs = SCHB_FS
@@ -42,8 +41,6 @@ def scipy_gen_fft(pickle_path, cdf_path, key, *args):
 			fs = SCB_FS
 	
 	fdf = pd.DataFrame(columns=['time', 'frequency', 'power'])
-	
-	f = df['time']
 	
 	for i in np.arange(0, (ts - st).total_seconds() + 0.01, 0.05):
 		center = st + timedelta(seconds=(float(i)))
@@ -92,8 +89,15 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 	ts = args[0][2]
 	inst = args[0][3].lower()
 	pad = args[0][0]
-	
-	pickle_path = f'./.cache/mms/1/scm/scb/{st.year}{st.month:02d}{st.day:02d}{st.hour:02d}{st.minute:02d}{st.second:02d}.pkl'
+
+	if key[0] == 'B':
+		inst = 'scm'
+		mode = 'scb'
+	else:
+		inst = 'edp'
+		mode = 'dce'
+
+	pickle_path = f'./.cache/mms/1/{inst}/{mode}/{st.year}{st.month:02d}{st.day:02d}{st.hour:02d}{st.minute:02d}{st.second:02d}.pkl'
 
 	df = load_pickle_safe(pickle_path, cdf_path, key, regen_cdf)
 
@@ -145,7 +149,7 @@ def gen_fft(pickle_path, cdf_path, key, *args):
 			'frequency': f_sel,
 			'power': P_sel})], ignore_index=True)
 	
-	pickle_path = f'./.cache/mms/1/scm/scb/fft/{pad:.2f}p{st.year}{st.month:02d}{st.day:02d}{st.hour:02d}{st.minute:02d}{st.second:02d}.pkl'
+	pickle_path = f'./.cache/mms/1/{inst}/scb/fft/{pad:.2f}p{st.year}{st.month:02d}{st.day:02d}{st.hour:02d}{st.minute:02d}{st.second:02d}.pkl'
 	os.makedirs(os.path.dirname(pickle_path), exist_ok=True)
 	fdf.to_pickle(pickle_path)
 
@@ -172,19 +176,29 @@ if __name__ == "__main__":
 	num_bins = 40
 	bin_factor = (lpf_lim) ** (1 / num_bins)
 
-	cdf_path = paperb
+	sig_key = 'Bz'
+	inst = 'scm' if sig_key[0] == 'B' else 'edp'
+	units = r'\frac{\text{nT}^2}{\text{Hz}}' if sig_key[0] == 'B' else r'\frac{\text{mV}^2}{\text{m}^2 \cdot \text{Hz}}'
+
+	if sig_key[0] == 'B':
+		cdf_path = f'pydata/mms1/{inst}/brst/l2/scb/2019/08/16/mms1_{inst}_brst_l2_scb_20190816093103_v2.2.1.cdf'
+		vmi = 1e-6
+		vma = 1e-2
+	else:
+		cdf_path = f'pydata/mms1/{inst}/brst/l2/dce/2019/08/16/mms1_{inst}_brst_l2_dce_20190816093103_v3.0.1.cdf'
+		vmi = 1e-4
+		vma = 10
+
+	save = True
 
 	# all scm caches for graphing all files
 	# sfc = glob.glob('mms_data/mms1/scm/brst/l2/schb/2020/09/02/*')
 	# pkl_paths = glob.glob('.cache/scm/schb/*')
 
-	sig_key = 'Bz'
-	units = r'\frac{\text{nT}^2}{\text{Hz}}' if sig_key[0] == 'B' else r'\frac{\text{mV}^2}{\text{m}^2 \cdot \text{Hz}}'
-
-	datefmt = '%m/%d/%Y-%H:%M:%S.%f'
-	#start = datetime.strptime('08/16/2019-09:31:56', datefmt)
-	start = datetime.strptime('08/16/2019-09:31:58.45', datefmt)
-	end = datetime.strptime('08/16/2019-09:31:58.45', datefmt)
+	datefmt = '%m/%d/%Y-%H:%M:%S'
+	start = datetime.strptime('08/16/2019-09:31:45', datefmt)
+	#start = datetime.strptime('08/16/2019-09:31:58.45', datefmt)
+	end = datetime.strptime('08/16/2019-09:32:15', datefmt)
 
 	# Create two axes: top for Ez vs time, bottom for FFT/PSD
 	fig, axes = plt.subplots(
@@ -207,7 +221,6 @@ if __name__ == "__main__":
 		b.reverse()
 
 		return b
-
 
 	def channelize(x):
 		global bins
@@ -257,23 +270,24 @@ if __name__ == "__main__":
 
 	time_bins = np.arange(0, (end - start).total_seconds() + 0.06, 0.05)
 
-#	fig.suptitle(
-#		fr'$|{sig_key[0]}|$ Frequency vs. Time vs. $|{sig_key[0]}|$ Power ${units}$ starting from {start.hour:02d}:{start.minute:02d}:{start.second:02d}')
+	fig.suptitle(
+		fr'$|{sig_key[0]}|$ Frequency vs. Time vs. $|{sig_key[0]}|$ Power ${units}$ starting from {start.hour:02d}:{start.minute:02d}:{start.second:02d}')
 
 	methods = False # ~~~~~~~~~~~~~~~~~~~~~~~~~~ TRUE IF PLOTTING SPECTRA OF BOTH, FALSE IF PLOTTING POWER OF BOTH TODO:
 
-	if methods:
-		fig.suptitle(fr'B-field Frequency vs. Power ${units}$ @ {start.strftime(datefmt)}')
-	else:
-		fig.suptitle(fr'Numpy method vs. Scipy method of Power ${units}$ @ {start.strftime(datefmt)}')
+#	if methods:
+#		fig.suptitle(fr'{sig_key[0]}-field Frequency vs. Power ${units}$ @ {start.strftime(datefmt)}')
+#	else:
+#		fig.suptitle(fr'Numpy method vs. Scipy method of Power ${units}$ @ {start.strftime(datefmt)}')
 
 	for j, i in enumerate([0.1, 0.25, 0.5]):
 		print(i*2)
 		ax = axes[j]
-		def make_fft(start, end, method, i):
+		def make_fft(start, end, method, i, key):
 			#pkl_path_real = f'./.cache/mms1/scm/scb/fft/{i:.2f}p{start.year}{start.month:02d}{start.day:02d}{start.hour:02d}{start.minute:02d}{start.second:02d}.pkl'
-			pkl_path_real = f'./.cache/mms1/scm/scb/{start.year}{start.month:02d}{start.day:02d}{start.hour:02d}{start.minute:02d}{start.second:02d}.pkl'
-			fdf = load_pickle_safe(pkl_path_real, cdf_path, sig_key, method, i, start, end, 'scb')
+			mode = 'dce' if inst == 'edp' else 'scb'
+			pkl_path_real = f'./.cache/mms/1/{inst}/{mode}/fft/{i:.2f}p{start.year}{start.month:02d}{start.day:02d}{start.hour:02d}{start.minute:02d}{start.second:02d}.pkl'
+			fdf = load_pickle_safe(pkl_path_real, cdf_path, sig_key, method, i, start, end, mode)
 			fdf.loc[fdf['frequency'] == 0, 'frequency'] = 1
 
 			print('load')
@@ -291,7 +305,7 @@ if __name__ == "__main__":
 			
 			return fdf
 
-		fdf = make_fft(start, end, gen_fft, i)
+		fdf = make_fft(start, end, gen_fft, i, sig_key)
 
 		fdf.to_excel(writer, sheet_name=f'{i * 2} sec interval')
 		print('write excel')
@@ -302,13 +316,13 @@ if __name__ == "__main__":
 #        print(fdf[:10])
 		
 		if start == end:
-			fdf = make_fft(start, end, gen_fft, i)
-			sdf = make_fft(start, end, scipy_gen_fft, i)
+			fdf = make_fft(start, end, gen_fft, i, sig_key)
+			sdf = make_fft(start, end, scipy_gen_fft, i, sig_key)
 			
 			if methods:
 				ax.plot(sdf['frequency'], sdf['power'], color='blue', label='Scipy method')
 				ax.plot(fdf['frequency'], fdf['power'], color='red', label='Numpy method')
-				
+
 				ax.xaxis.set_major_locator(FixedLocator([10, 100, 300, 1000]))
 				ax.set_xticklabels([r'$10^1$', r'$10^2$', r'$3 \cdot 10^2$', r'$10^3$'])
 				ax.set_xlim(left=1, right=300)
@@ -328,7 +342,7 @@ if __name__ == "__main__":
 			stat, xe, ye, bn = binned_statistic_2d(fdf['time'], fdf['channel'], fdf['power'],
 			                                       statistic='mean', bins=[time_bins, fdf['channel'].unique()])
 			mappable = ax.pcolormesh(xe, ye, stat.T,
-									 norm=mpl.colors.LogNorm(vmin=1e-6, vmax=1e-2), cmap='jet')
+									 norm=mpl.colors.LogNorm(vmin=vmi, vmax=vma), cmap='jet')
 			cbar = plt.colorbar(mappable=mappable, ax=ax)
 			cbar.formatter = FuncFormatter(lambda x, pos: f'{int(np.log10(x))}')
 			
@@ -346,31 +360,34 @@ if __name__ == "__main__":
 			#ax.set_ylim(bottom=channelize(10), top=channelize(lpf_lim))
 			ax.set_ylim(bottom=channelize(10), top=fdf['channel'].unique()[-1])
 			ax.yaxis.set_major_locator(FixedLocator(vfunc([10, 100, 1000])))
+			ax.set_yticklabels(['10','100','1000'])
 			#ax.yaxis.set_major_locator(FixedLocator(fdf['channel'].unique()))
 			#tl = bins
 			#ax.set_yticklabels(tl)
 
 		ax.set_title(rf'FFT taken with {i * 2} sec window / $\Delta f = {int((i * 2) ** -1)}$')
 		print('stylize\n')
-	
-	if methods:
-		plt.legend(loc='upper right')
-	else:
-		plt.xlabel('Scipy method Power')
-		plt.ylabel('Numpy method Power')
 
-	#plt.show()
-	print('\nshow')
+	if start == end:
+		if methods:
+			plt.legend(loc='upper right')
+		else:
+			plt.xlabel('Scipy method Power')
+			plt.ylabel('Numpy method Power')
 
 	for sheet in writer.sheets.values():
 		sheet.set_column('D:D', 10, sci_notate)
 
 	pngpth = './out/fft/'
 	os.makedirs(os.path.dirname(pngpth), exist_ok=True)
-	if methods:
-		plt.savefig(pngpth + 'methods.pdf', format='pdf')
+	if save:
+		if sig_key[0] == 'B':
+			plt.savefig(pngpth + 'bfield.pdf', format='pdf')
+		else:
+			plt.savefig(pngpth + 'efield.pdf', format='pdf')
 	else:
-		plt.savefig(pngpth + 'nvss.pdf', format='pdf')
+		plt.show()
+		print('\nshow')
 
 
 	writer.close()

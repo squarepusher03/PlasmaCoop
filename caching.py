@@ -19,17 +19,28 @@ def regen_cdf(pickle_path, cdf_path, key, *args):
 	try:
 		from spacepy import pycdf
 		print(cdf_path)
-		with pycdf.CDF(cdf_path) as cdf:
-			var = cdf['mms1_scm_acb_gse_scb_brst_l2'][:]
-			time = pd.to_datetime(cdf['Epoch'])
-
 		f = key[0]
+
+		if f == 'B':
+			with pycdf.CDF(cdf_path) as cdf:
+				var = cdf['mms1_scm_acb_gse_scb_brst_l2'][:]
+				time = pd.to_datetime(cdf['Epoch'])
+		else:
+			with pycdf.CDF(cdf_path) as cdf:
+				var = cdf['mms1_edp_dce_gse_brst_l2'][:]
+				time = pd.to_datetime(cdf['mms1_edp_epoch_brst_l2'])
+
 		df = pd.DataFrame({'time': time, f'{f}x': var[:, 0], f'{f}y': var[:, 1], f'{f}z': var[:, 2]})
 
 		# Save the regenerated pickle
-		os.makedirs(os.path.dirname(pickle_path), exist_ok=True)
-		df.to_pickle(pickle_path)
-		print(f"Successfully regenerated CDF pickle file: {pickle_path}")
+		if f == 'B':
+			pickle_path = f'./.cache/mms/1/scm/scb/{pickle_path[-18:len(pickle_path)]}'
+			df.to_pickle(pickle_path)
+			print(f"Successfully regenerated CDF pickle file: {pickle_path}")
+		else:
+			pickle_path = f'./.cache/mms/1/edp/dce/{pickle_path[-18:len(pickle_path)]}'
+			df.to_pickle(pickle_path)
+			print(f"Successfully regenerated CDF pickle file: {pickle_path}")
 
 		return df
 	except ImportError:
