@@ -162,7 +162,7 @@ paper = 'mms_data/mms1/scm/brst/l2/schb/2019/08/16/mms1_scm_brst_l2_schb_2019081
 pkl_path_p = '.cache/mms/1/scm/schb/20190816093145.pkl'
 
 paperb = 'pydata/mms1/scm/brst/l2/scb/2019/08/16/mms1_scm_brst_l2_scb_20190816093103_v2.2.1.cdf'
-pkl_path_b = '.cache/mms/1/scm/scb/20190816093145.pkl'
+pkl_path_b = '../.cache/mms/1/scm/scb/20190816093145.pkl'
 
 pkl_path_pr = '.cache/mms/1/scm/fft/scb/20190816093145.pkl'
 if __name__ == "__main__":
