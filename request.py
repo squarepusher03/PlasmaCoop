@@ -5,6 +5,7 @@ class Request:
 		self.freq_opts = opts.FrequencyOptions()
 		self.power_opts = opts.PowerOptions()
 		self.time_opts = opts.TimeOptions()
+		self.source_opts = opts.SourceOptions()
 
 		self.power_opts.float_precision = 2
 

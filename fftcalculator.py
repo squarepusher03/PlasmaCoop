@@ -1,54 +1,45 @@
+from datetime import datetime
+
 import pandas as pd
+import re
 from pathlib import Path
 
 import request
 
 
 class FFTCalculator():
-	channels = list([int()])
-
-	def __init__(self):
+	def __init__(self, req: request.Request):
 		self.values = pd.DataFrame()
 		self.data = pd.DataFrame()
-		self.files = list([tuple()])
-
-
-	def make_channels(self, freqs: list, req: request.Request):
-		opts = req.freq_opts
-		bin_factor = opts.upper_lim ** (1 / opts.n_bins)
-
-		h = len(freqs) - 1
-		df = 1 / req.time_opts.period
-
-		opts.channels = list()
-		while freqs[h] >= df and h > 0:
-			opts.channels.append(int(freqs[h]))
-			h = int(h // bin_factor)
-
-		opts.channels.append(int(freqs[0]))
-
-		opts.channels.reverse()
-		self.channels = opts.channels
+		self.files = list(str())
+		self.data_root = './pydata/'
+		self.path = ''
 
 
 	def _find_valid_data(self, req: request.Request):
+		st = req.time_opts.start
+		end = req.time_opts.end
+		interval = end - st
 
+		if self.path != '':
+			self.path = self.data_root
 
+			sr = req.time_opts.sample_rate_type
+			pr = req.source_opts.project.lower()
+			sat = req.source_opts.satellite.lower()
+			inst = req.source_opts.instrument.lower()
 
-	@staticmethod
-	def channelize(x):
-		channels = FFTCalculator.channels
+			self.path += pr + sat + f'/{inst}/brst/l2/{sr}/{st.year}/'
 
-		if x == channels[0]:
-			return 0
-		else:
-			for i in range(1, len(channels)):
-				if channels[i - 1] < x <= channels[i]:
-					return i
+			if interval.weeks <= 4:
+				self.path += f'{st.strftime("%m")}/'
+			if interval.hours <= 24:
+				self.path += f'{st.strftime("%d")}/'
 
-		if x == channels[-1]:
-			return len(channels)
-
-		print(f'wtf: {x}')
-		return 0
+		for file in Path('.').rglob(self.path + '**/*.cdf'):
+			match = re.search(r'\D+(\d{14})\D+', str(file))
+			if match:
+				ftime = datetime.strptime(match.group(1), '%Y%m%d%H%M%S')
+				if st <= ftime <= end:
+					self.files.append(str(file))
 
