@@ -34,17 +34,17 @@ def regen_cdf(pickle_path, cdf_path, key, *args):
 
 		# Save the regenerated pickle
 		if f == 'B':
-			pickle_path = f'./.cache/mms/1/scm/scb/{pickle_path[-18:len(pickle_path)]}'
+			pickle_path = f'.serialized/mms/1/scm/scb/{pickle_path[-18:len(pickle_path)]}'
 			df.to_pickle(pickle_path)
 			print(f"Successfully regenerated CDF pickle file: {pickle_path}")
 		else:
-			pickle_path = f'./.cache/mms/1/edp/dce/{pickle_path[-18:len(pickle_path)]}'
+			pickle_path = f'.serialized/mms/1/edp/dce/{pickle_path[-18:len(pickle_path)]}'
 			df.to_pickle(pickle_path)
 			print(f"Successfully regenerated CDF pickle file: {pickle_path}")
 
 		return df
 	except ImportError:
 		print("Error: spacepy not available. Cannot regenerate from CDF.")
-		print("Please install spacepy or delete the .cache directory and regenerate pickle files.")
+		print("Please install spacepy or delete the .serialized directory and regenerate pickle files.")
 		raise
 

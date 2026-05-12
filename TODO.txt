@@ -1,15 +1,16 @@
-y: 10 hz - 10000 hz
+pick several intervals to graph logarithmically
+1. Aug 16 2019 09:31:45 - 09:32:15
+2. Jan 1st 2022
+3. Oct 10 2021
 
-fig 2, chart d
+go up to 3000 Hz
 
-24 bins
+make readme file with labels of gaps of frequency, keep track of files and start times
 
--------------------------
+make excel 2D table of FFTs, linearly
 
-use scb not schb
+show delta f and keep it in readme
 
-look at period of time of data w/ vertical gaps
+compare data to MMS2 and MMS3 at the exact same intervals
 
-mark significant channels or their freqs
-
-look into small gaps
+CHECK THE TIMESHEET!
