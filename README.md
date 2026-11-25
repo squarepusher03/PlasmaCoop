@@ -34,5 +34,5 @@ This repository's history was restarted on 2026-11-25 from the then-current stat
 | Tool | Version |
 |------|---------|
 | Claude model | Claude Opus 5.5 (`claude-opus-5-5`) |
-| Claude Code | 2.1.332 |
+| Claude Code | 2.1.331 |
 | PAI (Personal AI Infrastructure) | 5.0.0 (Algorithm v6.3.0) |
