@@ -1,0 +1,31 @@
+pick several intervals to graph logarithmically
+1. Aug 16 2019 09:31:45 - 09:32:15
+2. Jan 1st 2022
+3. Oct 10 2021
+
+go up to 3000 Hz
+
+make readme file with labels of gaps of frequency, keep track of files and start times
+
+make excel 2D table of FFTs, linearly
+
+show delta f and keep it in readme
+
+compare data to MMS2 and MMS3 at the exact same intervals
+
+CHECK THE TIMESHEET!
+
+===============================================================================
+
+take 2 isolated bursts on 4 mms'
+
+check for
+length of burst
+
+plot spectra if time matches
+
+====================================================================================
+
+make extra columns at end of sheets for min and max of each channel
+
+consider grad for physics?? electrical? supposedly possibly even FREE????

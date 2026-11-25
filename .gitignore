@@ -1,0 +1,20 @@
+# Claude / PAI files
+CLAUDE.md
+.claude/
+MEMORY/
+Plans/
+HANDOFF_*.md
+REFACTOR_STAGES.md
+
+# Generated output
+out/
+
+# Caches
+__pycache__/
+*.pyc
+.pytest_cache/
+.serialized/
+_wsl_scratch/
+
+# IDE config (already-tracked files stay tracked; this only stops new ones)
+.idea/

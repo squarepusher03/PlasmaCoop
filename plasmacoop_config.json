@@ -1,0 +1,15 @@
+{
+ "archive": {
+  "delete_cdfs": true,
+  "enabled": true,
+  "verify_each_request": false,
+  "verify_on_launch": true
+ },
+ "cdf_dir": "E:/PlasmaCoop/pydata",
+ "download": {
+  "concurrent": 8,
+  "source": "cdaweb"
+ },
+ "event_ui": {},
+ "version": 1
+}
